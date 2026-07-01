@@ -1,50 +1,72 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { generateImage, uploadReference, getStyleModes } from "~/lib/api";
 
 export const Route = createFileRoute("/studio")({
   component: Studio,
 });
 
-type StyleMode = {
+type StyleModeInfo = {
   id: string;
   name: string;
-  description: string;
   icon: string;
+  promptPrefix: string;
 };
 
-const STYLE_MODES: StyleMode[] = [
-  { id: "sombrio", name: "Sombrio", description: "Dramatic shadows, dark tones", icon: "🌑" },
-  { id: "realista", name: "Realista", description: "Natural lighting, photoreal", icon: "📸" },
-  { id: "anime", name: "Anime", description: "Vibrant colors, cel-shaded", icon: "🌸" },
-  { id: "cinematico", name: "Cinematográfico", description: "Film grain, epic lighting", icon: "🎬" },
-  { id: "aquarela", name: "Aquarela", description: "Soft washes, paper texture", icon: "🎨" },
-  { id: "retro", name: "Retrô", description: "Vintage film, warm tones", icon: "📼" },
-  { id: "fantasia", name: "Fantasia", description: "Ethereal, magical glowing", icon: "🧚" },
-  { id: "cyberpunk", name: "Cyberpunk", description: "Neon, gritty high-tech", icon: "🏙️" },
+const FALLBACK_STYLES = [
+  { id: "sombrio", name: "Sombrio", icon: "🌑", promptPrefix: "" },
+  { id: "realista", name: "Realista", icon: "📸", promptPrefix: "" },
+  { id: "anime", name: "Anime", icon: "🌸", promptPrefix: "" },
+  { id: "cinematografico", name: "Cinematográfico", icon: "🎬", promptPrefix: "" },
+  { id: "aquarela", name: "Aquarela", icon: "🎨", promptPrefix: "" },
+  { id: "retro", name: "Retrô", icon: "📼", promptPrefix: "" },
+  { id: "fantasia", name: "Fantasia", icon: "🧚", promptPrefix: "" },
+  { id: "cyberpunk", name: "Cyberpunk", icon: "🏙️", promptPrefix: "" },
 ];
 
 function Studio() {
   const [prompt, setPrompt] = useState("");
-  const [selectedStyle, setSelectedStyle] = useState(STYLE_MODES[0].id);
+  const [selectedStyle, setSelectedStyle] = useState("sombrio");
   const [isGenerating, setIsGenerating] = useState(false);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [styleModes, setStyleModes] = useState<StyleModeInfo[]>(FALLBACK_STYLES);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
-  const handleGenerate = () => {
+  useEffect(() => {
+    getStyleModes().then((modes) => {
+      if (modes.length > 0) setStyleModes(modes);
+    }).catch(() => {});
+  }, []);
+
+  const handleGenerate = async () => {
     if (!prompt) return;
     setIsGenerating(true);
-    // Simulate generation
-    setTimeout(() => {
+
+    try {
+      const result = await generateImage({ prompt, styleId: selectedStyle });
+      
+      // Simulate a generated image while we wait for real AI integration
+      setGeneratedImage(`https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=800&auto=format&fit=crop&sig=${Date.now()}`);
+    } catch (error) {
+      console.error('Generation failed:', error);
+    } finally {
       setIsGenerating(false);
-      setGeneratedImage("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop");
-    }, 3000);
+    }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setUploadedFile(file);
       const url = URL.createObjectURL(file);
       setReferenceImage(url);
+      
+      try {
+        await uploadReference({ file });
+      } catch (error) {
+        console.error('Upload failed:', error);
+      }
     }
   };
 
@@ -87,7 +109,7 @@ function Studio() {
                     <div className="relative w-full h-full">
                       <img src={referenceImage} alt="Reference" className="w-full h-full object-cover rounded-lg" />
                       <button 
-                        onClick={() => setReferenceImage(null)}
+                        onClick={() => { setReferenceImage(null); setUploadedFile(null); }}
                         className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full hover:bg-black/70"
                       >
                         ✕
@@ -113,7 +135,7 @@ function Studio() {
               <section>
                 <label className="block text-sm font-semibold mb-4">3. Select Style Mode</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {STYLE_MODES.map((mode) => (
+                  {styleModes.map((mode) => (
                     <button
                       key={mode.id}
                       onClick={() => setSelectedStyle(mode.id)}
@@ -156,7 +178,7 @@ function Studio() {
                   <div className="w-full h-full group">
                     <img src={generatedImage} alt="Generated" className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                      <button className="bg-white text-black px-4 py-2 rounded-lg font-bold hover:bg-gray-100">Download</button>
+                      <a href={generatedImage} download className="bg-white text-black px-4 py-2 rounded-lg font-bold hover:bg-gray-100">Download</a>
                       <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-500">Upscale</button>
                     </div>
                   </div>
@@ -171,7 +193,7 @@ function Studio() {
               {generatedImage && (
                 <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
                   <span>Prompt: {prompt.substring(0, 30)}...</span>
-                  <span>Style: {STYLE_MODES.find(m => m.id === selectedStyle)?.name}</span>
+                  <span>Style: {styleModes.find(m => m.id === selectedStyle)?.name}</span>
                 </div>
               )}
             </div>
